@@ -44,6 +44,7 @@ typedef struct gc_inputs {
 enum GCError {
     GCERR_NOT_INITIALIZED = -1,
     GCERR_OK = 0,
+    GCERR_MUTEX_INIT,
     GCERR_LIBUSB_INIT,
     GCERR_LIBUSB_OPEN,
     GCERR_LIBUSB_CLAIM_INTERFACE,

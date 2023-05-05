@@ -175,7 +175,6 @@ EXPORT void CALL GetKeys(int Control, BUTTONS* Keys)
 
 EXPORT void CALL InitiateControllers(CONTROL_INFO ControlInfo)
 {
-    dlog(LOG_INFO, "InitiateControllers()");
     gc_init(cfg.async);
     if (gc_get_init_error() == GCERR_LIBUSB_OPEN) {
         return;

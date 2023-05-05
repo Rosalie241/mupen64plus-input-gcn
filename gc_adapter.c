@@ -13,14 +13,18 @@
 static unsigned char endpoint_in  = 0x81;
 static unsigned char endpoint_out = 0x02;
 
-static libusb_device_handle *device;
+static libusb_device_handle *device = NULL;
 static atomic_int initialized = 0;
+static atomic_int libusb_initialized = 0;
+static atomic_int mutex_initialized = 0;
 static atomic_int pending_deinit = 0;
 static atomic_int is_async = 0;
 static atomic_int is_polling_thread_running = 0;
 static _Atomic enum GCError init_error = GCERR_NOT_INITIALIZED;
 
 static atomic_int poll_count = 0;
+
+static pthread_mutex_t gc_mutex;
 
 static pthread_t poll_thread;
 static void* gc_polling_thread(void*);
@@ -34,12 +38,21 @@ void gc_init(int async_mode)
 
     int err;
 
+    err = pthread_mutex_init(&gc_mutex, NULL);
+    if (err != 0) {
+        dlog(LOG_ERR, "Failed to initialize mutex");
+        init_error = GCERR_MUTEX_INIT; 
+        return;
+    }
+    mutex_initialized = 1;
+
     err = libusb_init(NULL);
     if (err) {
         dlog(LOG_ERR, "Failed to initialize libusb");
         init_error = GCERR_LIBUSB_INIT; 
         return;
     }
+    libusb_initialized = 1;
 
     // open first available device
     device = libusb_open_device_with_vid_pid(NULL, 0x057E, 0x0337);
@@ -104,7 +117,10 @@ enum GCError gc_get_init_error()
 
 void gc_deinit()
 {
-    if (!initialized) return;
+    if (mutex_initialized) {
+        pthread_mutex_destroy(&gc_mutex);
+        mutex_initialized = 0;
+    }
 
     if (is_async) {
         dlog(LOG_INFO, "Terminating the polling thread");
@@ -119,7 +135,10 @@ void gc_deinit()
         libusb_close(device);
     }
 
-    libusb_exit(NULL);
+    if (libusb_initialized) {
+        libusb_exit(NULL);
+        libusb_initialized = 0;
+    }
 
     initialized = 0;
     init_error = GCERR_NOT_INITIALIZED;
@@ -161,6 +180,8 @@ int gc_poll_inputs()
         dlog(LOG_WARN, "Expected %d bytes response, got %d", 37, transferred);
     }
 
+    pthread_mutex_lock(&gc_mutex);
+
     for (int i = 0; i < 4; ++i) {
         int offset = i * 9;
         gc[i].status_old = gc[i].status;
@@ -201,6 +222,8 @@ int gc_poll_inputs()
         gc[i].rt = smax((int)gc[i].rt - gc[i].rt_rest, 0);
     }
 
+    pthread_mutex_unlock(&gc_mutex);
+
     return 0;
 }
 
@@ -230,7 +253,11 @@ int gc_get_inputs(int index, gc_inputs *inputs)
             return -3;
     }
 
+    pthread_mutex_lock(&gc_mutex);
+
     *inputs = gc[index];
+
+    pthread_mutex_unlock(&gc_mutex);
 
     return 0;
 }
@@ -246,10 +273,14 @@ int gc_get_all_inputs(gc_inputs inputs[4])
             return -3;
     }
 
+    pthread_mutex_lock(&gc_mutex);
+
     inputs[0] = gc[0];
     inputs[1] = gc[1];
     inputs[2] = gc[2];
     inputs[3] = gc[3];
+
+    pthread_mutex_unlock(&gc_mutex);
 
     return 0;
 }
