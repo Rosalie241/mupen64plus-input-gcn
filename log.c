@@ -1,63 +1,23 @@
 #include "log.h"
+#include "main.h"
 
-#include <Windows.h>
-#include <shlwapi.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <time.h>
-#include <io.h>
-#include <fcntl.h>
-#include <share.h>
-#include <sys\stat.h>
-#include "plugin_info.h"
-
-const char prefix_warn[] = "warning: ";
-const char prefix_error[] = "error: ";
-const char prefix_none[] = "";
-
-char logpath[MAX_PATH];
-FILE *logfile;
-
-void log_open()
-{
-    GetModuleFileNameA(NULL, logpath, sizeof(logpath));
-    PathRemoveFileSpecA(logpath);
-
-    PathCombineA(logpath, logpath, "Logs");
-    CreateDirectory(logpath, NULL);
-
-    PathCombineA(logpath, logpath, PLUGIN_NAME ".txt");
-
-    logfile = _fsopen(logpath, "w", _SH_DENYWR);
-}
-
-void log_close()
-{
-    fclose(logfile);
-}
 
 void dlog(enum LogLevel l, char fmt[], ...)
 {
-    time_t rawtime;
-    time(&rawtime);
-
-    struct tm *timeinfo = localtime(&rawtime);
-    char timestr[16];
-    strftime(timestr, sizeof(timestr), "%H:%M:%S", timeinfo);
-
-    const char *prefix;
+    int m64p_loglevel;
 
     switch (l)
     {
     case LOG_ERR:
-    case LOG_ERR_NO_MSGBOX:
-        prefix = prefix_error;
+        m64p_loglevel = M64MSG_ERROR;
         break;
     case LOG_WARN:
-        prefix = prefix_warn;
+        m64p_loglevel = M64MSG_WARNING;
         break;
     default:
-        prefix = prefix_none;
+        m64p_loglevel = M64MSG_INFO;
         break;
     }
 
@@ -69,11 +29,5 @@ void dlog(enum LogLevel l, char fmt[], ...)
 
     va_end(argv);
 
-    // print to file
-    fprintf(logfile, "[%s] %s%s\n", timestr, prefix, msg);
-    fflush(logfile);
-    
-    if(l == LOG_ERR) {
-        MessageBox(NULL, msg, PLUGIN_NAME " error", MB_OK | MB_ICONERROR);
-    }
+    debug_callback(debug_callback_context, m64p_loglevel, msg);
 }

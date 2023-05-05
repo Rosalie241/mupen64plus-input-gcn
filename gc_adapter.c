@@ -1,36 +1,34 @@
 #include "gc_adapter.h"
-#include <libusb-1.0/libusb.h>
+
+#include <libusb.h>
 #include <stdio.h>
-#include <synchapi.h>
 #include <stdatomic.h>
 #include <time.h>
 #include "log.h"
 #include "util.h"
+#include <unistd.h>
 
-unsigned char endpoint_in = 0x81;
-unsigned char endpoint_out = 0x02;
+#include <pthread.h>
 
-libusb_device_handle *device;
+static unsigned char endpoint_in  = 0x81;
+static unsigned char endpoint_out = 0x02;
+
+static libusb_device_handle *device;
 static atomic_int initialized = 0;
 static atomic_int pending_deinit = 0;
 static atomic_int is_async = 0;
+static atomic_int is_polling_thread_running = 0;
 static _Atomic enum GCError init_error = GCERR_NOT_INITIALIZED;
 
-HANDLE poll_thread;
-HANDLE terminate_event;
-CRITICAL_SECTION gc_critical;
+static atomic_int poll_count = 0;
 
-HANDLE polltest_start;
-HANDLE polltest_end;
-atomic_int poll_count = 0;
+static pthread_t poll_thread;
+static void* gc_polling_thread(void*);
 
 static gc_inputs gc[4];
 
-DWORD WINAPI gc_polling_thread(LPVOID param);
-
 void gc_init(int async_mode)
 {
-    dlog(LOG_INFO, "gc_init()");
     if (initialized) return;
     dlog(LOG_INFO, "Attempting to initialize the adapter");
 
@@ -46,7 +44,7 @@ void gc_init(int async_mode)
     // open first available device
     device = libusb_open_device_with_vid_pid(NULL, 0x057E, 0x0337);
     if (!device) {
-        dlog(LOG_ERR_NO_MSGBOX, "Failed to open adapter");
+        dlog(LOG_ERR, "Failed to open adapter");
         init_error = GCERR_LIBUSB_OPEN;
         return;
     }
@@ -83,8 +81,10 @@ void gc_init(int async_mode)
     if (async_mode) {
         // start a thread
         dlog(LOG_INFO, "Starting a polling thread");
-        poll_thread = CreateThread(NULL, 0, gc_polling_thread, NULL, 0, NULL); 
-        if (!poll_thread) {
+        is_polling_thread_running = 1;
+        int ret = pthread_create(&poll_thread, NULL, gc_polling_thread, NULL);
+        if (ret != 0)
+        {
             dlog(LOG_ERR, "Failed to create a polling thread");
             init_error = GCERR_CREATE_THREAD;
         }
@@ -104,13 +104,12 @@ enum GCError gc_get_init_error()
 
 void gc_deinit()
 {
-    dlog(LOG_INFO, "gc_deinit()");
     if (!initialized) return;
 
     if (is_async) {
         dlog(LOG_INFO, "Terminating the polling thread");
-        terminate_event = CreateEvent(NULL, FALSE, TRUE, NULL);
-        WaitForSingleObject(poll_thread, INFINITE);
+        is_polling_thread_running = 0;
+        pthread_join(poll_thread, NULL);
         dlog(LOG_INFO, "...done");
     }
 
@@ -153,7 +152,7 @@ int gc_poll_inputs()
         if (err == LIBUSB_ERROR_TIMEOUT) {
             dlog(LOG_WARN, "Failed in transfer, %s", libusb_error_name(err));
         } else {
-            dlog(LOG_ERR_NO_MSGBOX, "Failed in transfer, %s", libusb_error_name(err));
+            dlog(LOG_ERR, "Failed in transfer, %s", libusb_error_name(err));
             pending_deinit = 1;
         }
         return -2;
@@ -161,8 +160,6 @@ int gc_poll_inputs()
     if (transferred != 37) {
         dlog(LOG_WARN, "Expected %d bytes response, got %d", 37, transferred);
     }
-
-    EnterCriticalSection(&gc_critical);
 
     for (int i = 0; i < 4; ++i) {
         int offset = i * 9;
@@ -204,19 +201,18 @@ int gc_poll_inputs()
         gc[i].rt = smax((int)gc[i].rt - gc[i].rt_rest, 0);
     }
 
-    LeaveCriticalSection(&gc_critical);
-
     return 0;
 }
 
-DWORD WINAPI gc_polling_thread(LPVOID param)
+void* gc_polling_thread(void* args)
 {
-    while (WaitForSingleObject(terminate_event, 0)) {
+    while (is_polling_thread_running)
+    {
         gc_poll_inputs();
-        ++poll_count;
+        poll_count++;
     }
 
-    return 0;
+    return NULL;
 }
 
 int gc_get_inputs(int index, gc_inputs *inputs)
@@ -234,11 +230,7 @@ int gc_get_inputs(int index, gc_inputs *inputs)
             return -3;
     }
 
-    EnterCriticalSection(&gc_critical);
-
     *inputs = gc[index];
-
-    LeaveCriticalSection(&gc_critical);
 
     return 0;
 }
@@ -254,14 +246,10 @@ int gc_get_all_inputs(gc_inputs inputs[4])
             return -3;
     }
 
-    EnterCriticalSection(&gc_critical);
-
     inputs[0] = gc[0];
     inputs[1] = gc[1];
     inputs[2] = gc[2];
     inputs[3] = gc[3];
-
-    LeaveCriticalSection(&gc_critical);
 
     return 0;
 }
@@ -277,11 +265,11 @@ float gc_test_pollrate()
         return -1;
 
     poll_count = 0;
-    
+
     struct timeval old;
     gettimeofday(&old, NULL);
-    
-    Sleep(1000);
+
+    sleep(1);
 
     struct timeval new;
     gettimeofday(&new, NULL);
@@ -291,6 +279,6 @@ float gc_test_pollrate()
     delta.tv_usec = new.tv_usec - old.tv_usec;
 
     float delta_s = delta.tv_sec + (float)delta.tv_usec / 1000000;
-    
+
     return poll_count / delta_s;
 }

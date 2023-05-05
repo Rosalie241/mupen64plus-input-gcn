@@ -1,27 +1,30 @@
 #include "config.h"
 #include "log.h"
-#include "plugin_info.h"
+#include "main.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <shlobj.h>
-#include <shlwapi.h>
+#include <errno.h>
 
 struct config cfg;
 
-static char configpath[MAX_PATH];
-int is_initialized = 0;
+static char configpath[100];
+static int is_initialized = 0;
+
+//
+// Configuration Keys
+//
+#define KEY_RANGE "Range"
+#define KEY_TRIGGERTRESHOLD "TriggerTreshold"
+#define KEY_
 
 void config_init()
 {
     if (is_initialized) return;
 
-    HRESULT err = SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, configpath);
-    if (err)
-    {
-        dlog(LOG_ERR_NO_MSGBOX, "Failed to initialize config");
-    }
-    PathAppend(configpath, PLUGIN_NAME ".bin");
+    // TODO: use mupen API
+    strcpy(configpath, ".");
 
     is_initialized = 1;
 }
@@ -31,13 +34,11 @@ void config_defaults()
     char header[4] = "PJGC";
     memcpy(cfg.header, header, sizeof(cfg.header));
 
-    cfg.version = (PLUGIN_VERSION_MAJOR<<8) + PLUGIN_VERSION_MINOR;
-
     cfg.range = 80;
     cfg.trig_thres = 128;
     cfg.stick_a2d_thres = 64;
     cfg.dz = 0;
-    cfg.async = 1;
+    cfg.async = 1; // TODO
     cfg.single_mapping = 0;
     cfg.scale_diagonals = 1;
 
@@ -83,7 +84,7 @@ void config_load()
 
     FILE *f = fopen(configpath, "rb");
     if (f == NULL) {
-        dlog(LOG_ERR_NO_MSGBOX, "Failed to load config file \"%s\": %s",
+        dlog(LOG_ERR, "Failed to load config file \"%s\": %s",
              configpath,
              strerror(errno));
         return;
@@ -98,18 +99,18 @@ void config_load()
     }
 
     if (memcmp(cfg.header, cfg_new.header, sizeof(cfg.header))) {
-        dlog(LOG_ERR_NO_MSGBOX, "Config file does not appear to be valid");
+        dlog(LOG_ERR, "Config file does not appear to be valid");
         fclose(f); 
         return;
     }
 
     if (cfg_new.version > cfg.version) {
-        dlog(LOG_ERR_NO_MSGBOX, "Config file version is newer than current (%04x > %04x)",
+        dlog(LOG_ERR, "Config file version is newer than current (%04x > %04x)",
              cfg_new.version, cfg.version);
         fclose(f); 
         return;
     } else if ((cfg_new.version>>8) < (cfg.version>>8)) {
-        dlog(LOG_ERR_NO_MSGBOX, "Config major file version is older than current (%04x < %04x)",
+        dlog(LOG_ERR, "Config major file version is older than current (%04x < %04x)",
              cfg_new.version, cfg.version);
         fclose(f); 
         return;

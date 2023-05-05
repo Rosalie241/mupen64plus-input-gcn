@@ -1,73 +1,133 @@
-#define WIN32_LEAN_AND_MEAN
+#define M64P_PLUGIN_PROTOTYPES 1
+#define INPUT_PLUGIN_API_VERSION 0x020100
 
-#include <Windows.h>
-#include <Shlwapi.h>
-#include "zilmar_controller_1.0.h"
+#include "main.h"
+
 #include "gc_adapter.h"
 #include "config.h"
-#include "gui.h"
 #include "util.h"
-#include "plugin_info.h"
 #include "mapping.h"
 #include "log.h"
 
-HINSTANCE hInstance;
+//
+// Local Variables
+//
 
-BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved)
+static int l_IsInitialized = 0;
+
+//
+// Public Variables
+//
+
+ptr_ConfigOpenSection ConfigOpenSection = NULL;
+ptr_ConfigSaveSection ConfigSaveSection = NULL;
+ptr_ConfigSetDefaultInt ConfigSetDefaultInt = NULL;
+ptr_ConfigSetDefaultBool ConfigSetDefaultBool = NULL;
+ptr_ConfigGetParamInt ConfigGetParamInt  = NULL;
+ptr_ConfigGetParamBool ConfigGetParamBool = NULL;
+ptr_ConfigSetParameter ConfigSetParameter = NULL;
+
+void (*debug_callback)(void *, int, const char *);
+void *debug_callback_context = NULL;
+
+//
+// Basic Plugin Functions
+//
+
+EXPORT m64p_error CALL PluginStartup(m64p_dynlib_handle CoreLibHandle, void *Context, void (*DebugCallback)(void *, int, const char *))
 {
-    switch (fdwReason)
+    if (l_IsInitialized)
     {
-    case DLL_PROCESS_ATTACH:
-        hInstance = hinstDLL;
-        log_open();
-        config_load();
-        InitializeCriticalSection(&gc_critical);
-        break;
-    case DLL_PROCESS_DETACH:
-        log_close();
-        DeleteCriticalSection(&gc_critical);
-        break;
+        return M64ERR_ALREADY_INIT;
     }
-    return TRUE;
+
+    // setup debug callback
+    debug_callback_context = Context;
+    debug_callback         = DebugCallback;
+
+    // setup config function pointers
+    ConfigOpenSection = (ptr_ConfigOpenSection)DLSYM(CoreLibHandle, "ConfigOpenSection");
+    ConfigSaveSection = (ptr_ConfigSaveSection)DLSYM(CoreLibHandle, "ConfigSaveSection");
+    ConfigSetDefaultInt = (ptr_ConfigSetDefaultInt)DLSYM(CoreLibHandle, "ConfigSetDefaultInt");
+    ConfigSetDefaultBool = (ptr_ConfigSetDefaultBool)DLSYM(CoreLibHandle, "ConfigSetDefaultBool");
+    ConfigGetParamInt = (ptr_ConfigGetParamInt)DLSYM(CoreLibHandle, "ConfigGetParamInt");
+    ConfigGetParamBool = (ptr_ConfigGetParamBool)DLSYM(CoreLibHandle, "ConfigGetParamBool");
+    ConfigSetParameter = (ptr_ConfigSetParameter)DLSYM(CoreLibHandle, "ConfigSetParameter");
+
+    // try to load the config
+    config_load();
+
+    l_IsInitialized = 1;
+    return M64ERR_SUCCESS;
 }
 
-EXPORT void CALL CloseDLL(void)
+EXPORT m64p_error CALL PluginShutdown(void)
 {
-	gc_deinit();
+    if (!l_IsInitialized)
+    {
+        return M64ERR_NOT_INIT;
+    }
+
+    // reset debug callback
+    debug_callback_context = NULL;
+    debug_callback         = NULL;
+
+    l_IsInitialized = 0;
+    return M64ERR_SUCCESS;
 }
 
-EXPORT void CALL DllAbout(HWND hParent)
+EXPORT m64p_error CALL PluginGetVersion(m64p_plugin_type *pluginType, int *pluginVersion, 
+    int *apiVersion, const char **pluginNamePtr, int *capabilities)
 {
-	MessageBox(
-        hParent, 
-        "Proof of concept Wii U Gamecube adapter plugin\n"
-        "Version " PLUGIN_VERSION "\n"
-        "Compiled on " __DATE__ "\n\n"
-        PLUGIN_REPO,
-        "About " PLUGIN_NAMEVER,
-        MB_OK | MB_ICONINFORMATION
-    );
+    if (pluginType != NULL)
+    {
+        *pluginType = M64PLUGIN_INPUT;
+    }
+
+    if (pluginVersion != NULL)
+    {
+        *pluginVersion = 0x010000;
+    }
+
+    if (apiVersion != NULL)
+    {
+        *apiVersion = INPUT_PLUGIN_API_VERSION;
+    }
+
+    if (pluginNamePtr != NULL)
+    {
+        *pluginNamePtr = "mupen64plus-input-gcn";
+    }
+
+    if (capabilities != NULL)
+    {
+        *capabilities = 0;
+    }
+
+    return M64ERR_SUCCESS;
 }
 
-EXPORT void CALL DllConfig(HWND hParent)
+//
+// Custom Plugin Functions
+//
+
+/*
+EXPORT m64p_error CALL PluginConfig()
 {
-    config_window(hInstance, hParent);
+    // TODO
+    return M64ERR_SUCCESS;
 }
+*/
 
-//EXPORT void CALL DllTest(HWND hParent);
+//
+// Input Plugin Functions
+//
 
-EXPORT void CALL GetDllInfo(PLUGIN_INFO *PluginInfo)
+EXPORT void CALL ControllerCommand(int Control, unsigned char* Command)
 {
-    PluginInfo->Version = 0x0100;
-    PluginInfo->Type = PLUGIN_TYPE_CONTROLLER;
-    strncpy(
-        PluginInfo->Name,
-        PLUGIN_NAMEVER,
-        sizeof(PluginInfo->Name)
-    );
 }
 
-EXPORT void CALL GetKeys(int Control, BUTTONS *Keys)
+EXPORT void CALL GetKeys(int Control, BUTTONS* Keys)
 {
     gc_inputs i;
 
@@ -87,12 +147,11 @@ EXPORT void CALL GetKeys(int Control, BUTTONS *Keys)
     process_inputs_digital(&id);
     process_inputs_analog(&i);
 
-    // mappings here LOL
-    Keys->A_BUTTON = get_mapping_state(&i, &id, cfg.mapping[Control].a, 0);
-    Keys->B_BUTTON = get_mapping_state(&i, &id, cfg.mapping[Control].b, 0);
-    Keys->Z_TRIG = get_mapping_state(&i, &id, cfg.mapping[Control].z, 0);
-    Keys->L_TRIG = get_mapping_state(&i, &id, cfg.mapping[Control].l, 0);
-    Keys->R_TRIG = get_mapping_state(&i, &id, cfg.mapping[Control].r, 0);
+    Keys->A_BUTTON     = get_mapping_state(&i, &id, cfg.mapping[Control].a, 0);
+    Keys->B_BUTTON     = get_mapping_state(&i, &id, cfg.mapping[Control].b, 0);
+    Keys->Z_TRIG       = get_mapping_state(&i, &id, cfg.mapping[Control].z, 0);
+    Keys->L_TRIG       = get_mapping_state(&i, &id, cfg.mapping[Control].l, 0);
+    Keys->R_TRIG       = get_mapping_state(&i, &id, cfg.mapping[Control].r, 0);
     Keys->START_BUTTON = get_mapping_state(&i, &id, cfg.mapping[Control].start, 0);
 
     Keys->L_CBUTTON = get_mapping_state(&i, &id, cfg.mapping[Control].c_left, 0);
@@ -112,15 +171,11 @@ EXPORT void CALL GetKeys(int Control, BUTTONS *Keys)
                  - get_mapping_state(&i, &id, cfg.mapping[Control].analog_left, 1);
 }
 
-EXPORT void CALL InitiateControllers(HWND hMainWindow, CONTROL Controls[4])
+EXPORT void CALL InitiateControllers(CONTROL_INFO ControlInfo)
 {
     dlog(LOG_INFO, "InitiateControllers()");
     gc_init(cfg.async);
     if (gc_get_init_error() == GCERR_LIBUSB_OPEN) {
-        MessageBox(hMainWindow, 
-            "Failed to open the adapter.\n\n"
-            "Make sure the correct driver is installed and the adapter is plugged in.",
-            PLUGIN_NAME " error", MB_ICONERROR | MB_OK);
         return;
     }
 
@@ -136,7 +191,7 @@ EXPORT void CALL InitiateControllers(HWND hMainWindow, CONTROL Controls[4])
             if (err) return;
         }
     } else {
-        Sleep(80);
+        //Sleep(80);
         int err = gc_get_all_inputs(gc);
         if (err) return;
     }
@@ -148,36 +203,43 @@ EXPORT void CALL InitiateControllers(HWND hMainWindow, CONTROL Controls[4])
         int mi = cfg.single_mapping ? 0 : i;
 
         if (gc_is_present(status)) {
-            Controls[i].Present = cfg.mapping[mi].enabled ? TRUE : FALSE;
+            ControlInfo.Controls[i].Present = cfg.mapping[mi].enabled ? 1 : 0;
             dlog(LOG_INFO, "Controller %d present, status 0x%X", i, status);
             ++concount;
         } else {
-            Controls[i].Present = cfg.mapping[mi].force_plugged && cfg.mapping[mi].enabled ? TRUE : FALSE;
+            ControlInfo.Controls[i].Present = cfg.mapping[mi].force_plugged && cfg.mapping[mi].enabled ? 1 : 0;
             dlog(LOG_INFO, "Controller %d not available, status 0x%X", i, status);
         }
 
-        Controls[i].RawData = FALSE;
-        Controls[i].Plugin = PLUGIN_NONE + cfg.mapping[mi].accessory;
+        ControlInfo.Controls[i].RawData = 0;
+        ControlInfo.Controls[i].Plugin = PLUGIN_NONE + cfg.mapping[mi].accessory;
     }
 
     if (concount == 0) {
-        MessageBox(
-            hMainWindow, 
-            "No controllers detected.\n\n"
-            "Please plug in a controller, then restart the emulator.",
-            PLUGIN_NAME " info", MB_OK | MB_ICONINFORMATION
-        );
+        dlog(LOG_WARN, "No controllers detected\n");
     }
 }
 
-//EXPORT void CALL ReadController(int Control, BYTE *Command);
+EXPORT void CALL ReadController(int Control, unsigned char *Command)
+{
+}
+
+EXPORT int CALL RomOpen(void)
+{
+    gc_init(cfg.async);
+    return 1;
+}
 
 EXPORT void CALL RomClosed(void)
 {
-    // something in here
+    gc_deinit();
 }
 
-EXPORT void CALL RomOpen(void)
+EXPORT void CALL SDL_KeyDown(int keymod, int keysym)
 {
-    gc_init(cfg.async);
 }
+
+EXPORT void CALL SDL_KeyUp(int keymod, int keysym)
+{
+}
+

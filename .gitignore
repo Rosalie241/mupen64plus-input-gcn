@@ -1,2 +1,4 @@
-*.dll
 *.o
+.cache
+compile_commands.json
+build

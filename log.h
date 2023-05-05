@@ -1,13 +1,13 @@
-#pragma once
+#ifndef LOG_H
+#define LOG_H
 
 enum LogLevel
 {
     LOG_INFO,
     LOG_WARN,
-    LOG_ERR,
-    LOG_ERR_NO_MSGBOX,
+    LOG_ERR
 };
 
-void log_open();
-void log_close();
 void dlog(enum LogLevel l, char fmt[], ...);
+
+#endif // LOG_H

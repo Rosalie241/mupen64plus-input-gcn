@@ -1,6 +1,5 @@
-#pragma once
-
-#include <Windows.h>
+#ifndef GC_ADAPTER_H
+#define GC_ADAPTER_H
 
 typedef struct gc_inputs {
     unsigned char status_old;
@@ -51,8 +50,6 @@ enum GCError {
     GCERR_CREATE_THREAD,
 };
 
-extern CRITICAL_SECTION gc_critical;
-
 /* attempts to initialize the adapter.
  * if async_mode is non-zero, a polling thread will be started */
 void gc_init(int async_mode);
@@ -84,3 +81,5 @@ int gc_is_async();
  * requires the adapter to be initialized in async mode.
  * returns a pollrate in Hz on success, or a negative value on error. */
 float gc_test_pollrate();
+
+#endif // GC_ADAPTER_H

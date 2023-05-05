@@ -1,4 +1,5 @@
-#pragma once
+#ifndef CONFIG_H
+#define CONFIG_H
 
 enum MappingButtonAxis
 {
@@ -85,3 +86,5 @@ extern struct config cfg;
 void config_defaults();
 void config_load();
 void config_save();
+
+#endif // CONFIG_H
