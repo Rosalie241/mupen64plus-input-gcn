@@ -5,6 +5,11 @@ cmake_minimum_required(VERSION 3.26)
 
 project(mupen64plus-input-gcn)
 
+# require pthreads
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
+# require libusb
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBUSB REQUIRED libusb-1.0)
 
@@ -23,6 +28,7 @@ add_library(mupen64plus-input-gcn SHARED ${MUPEN64PLUS_INPUT_GCN_SOURCES})
 
 target_link_libraries(mupen64plus-input-gcn
     ${LIBUSB_LIBRARIES}
+    Threads::Threads
 )
 
 target_include_directories(mupen64plus-input-gcn PRIVATE 
