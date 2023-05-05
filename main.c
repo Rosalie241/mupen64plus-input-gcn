@@ -1,13 +1,15 @@
 #define M64P_PLUGIN_PROTOTYPES 1
 #define INPUT_PLUGIN_API_VERSION 0x020100
 
+#include "util.h"
+
 #include "main.h"
 
 #include "gc_adapter.h"
 #include "config.h"
-#include "util.h"
 #include "mapping.h"
 #include "log.h"
+
 
 //
 // Local Variables
@@ -191,7 +193,7 @@ EXPORT void CALL InitiateControllers(CONTROL_INFO ControlInfo)
             if (err) return;
         }
     } else {
-        //Sleep(80);
+        msleep(80);
         int err = gc_get_all_inputs(gc);
         if (err) return;
     }

@@ -111,16 +111,16 @@ int get_buttonaxis_state(enum MappingButtonAxis ba, gc_inputs *i, gc_inputs *id,
     case BA_L_ANALOG:
         state = i->lt;
         break;
-    case BA_LEFT:
+    case BA_DOWN:
         state = smax(-i->ax, 0);
         break;
-    case BA_RIGHT:
+    case BA_UP:
         state = smax(i->ax, 0);
         break;
-    case BA_DOWN:
+    case BA_LEFT:
         state = smax(-i->ay, 0);
         break;
-    case BA_UP:
+    case BA_RIGHT:
         state = smax(i->ay, 0);
         break;
     case BA_CLEFT:

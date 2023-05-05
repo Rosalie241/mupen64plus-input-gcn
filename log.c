@@ -29,5 +29,8 @@ void dlog(enum LogLevel l, char fmt[], ...)
 
     va_end(argv);
 
-    debug_callback(debug_callback_context, m64p_loglevel, msg);
+    if (debug_callback != NULL)
+    {
+        debug_callback(debug_callback_context, m64p_loglevel, msg);
+    }
 }

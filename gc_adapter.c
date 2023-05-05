@@ -1,11 +1,11 @@
 #include "gc_adapter.h"
+#include "util.h"
 
 #include <libusb.h>
 #include <stdio.h>
 #include <stdatomic.h>
 #include <time.h>
 #include "log.h"
-#include "util.h"
 #include <unistd.h>
 
 #include <pthread.h>

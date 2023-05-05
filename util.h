@@ -1,5 +1,13 @@
 #pragma once
 
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#define _POSIX_C_SOURCE 199309L
+#include <time.h>
+#include <errno.h>
+#endif
+
 #include <math.h>
 #include <stdlib.h>
 
@@ -61,4 +69,22 @@ static inline int smax(int a, int b)
     } else {
         return a;
     }
+}
+
+static inline void msleep(unsigned int msec)
+{
+#ifdef _WIN32
+    Sleep(msec);
+#else
+    struct timespec ts;
+    int ret;
+
+    ts.tv_sec = msec / 1000;
+    ts.tv_nsec = (msec % 1000) * 1000000;
+
+    do
+    {
+        ret = nanosleep(&ts, &ts);
+    } while (ret && errno == EINTR);
+#endif
 }

@@ -38,7 +38,7 @@ void config_defaults()
     cfg.trig_thres = 128;
     cfg.stick_a2d_thres = 64;
     cfg.dz = 0;
-    cfg.async = 1; // TODO
+    cfg.async = 1;
     cfg.single_mapping = 0;
     cfg.scale_diagonals = 1;
 
@@ -82,6 +82,7 @@ void config_load()
 
     config_defaults();
 
+    /*
     FILE *f = fopen(configpath, "rb");
     if (f == NULL) {
         dlog(LOG_ERR, "Failed to load config file \"%s\": %s",
@@ -119,6 +120,7 @@ void config_load()
     cfg = cfg_new;
 
     fclose(f);
+*/
 }
 
 void config_save()
